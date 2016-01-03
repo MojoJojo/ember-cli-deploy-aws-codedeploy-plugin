@@ -1,7 +1,7 @@
 {
-  "name": "ember-cli-deploy-aws-codedeploy-plugin",
-  "version": "0.0.0",
-  "description": "The default blueprint for ember-cli addons.",
+  "name": "ember-cli-deploy-aws-codedeploy",
+  "version": "0.0.1",
+  "description": "Ember CLI deploy plugin for AWS code deploy. This plugin enables you to create an archive out of your ember js build, upload to Amazon S3 bucket and trigger a deployment.",
   "directories": {
     "doc": "doc",
     "test": "tests"
@@ -37,12 +37,17 @@
     "ember-disable-prototype-extensions": "^1.0.0",
     "ember-try": "~0.0.8"
   },
-  "keywords": [
-    "ember-addon"
-  ],
   "dependencies": {
-    "ember-cli-babel": "^5.1.5"
+    "archiver": "^0.20.0",
+    "aws-sdk": "^2.2.26",
+    "ember-cli-babel": "^5.1.5",
+    "ember-cli-deploy-plugin": "^0.2.0",
+    "minimatch": "^3.0.0"
   },
+  "keywords": [
+    "ember-addon",
+    "ember-cli-deploy-plugin"
+  ],
   "ember-addon": {
     "configPath": "tests/dummy/config"
   }
