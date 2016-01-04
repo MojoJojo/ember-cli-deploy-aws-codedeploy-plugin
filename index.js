@@ -1,7 +1,7 @@
 /* jshint node: true */
 'use strict';
 var DeployPluginBase = require('ember-cli-deploy-plugin');
-var util = require('util');
+
 var path = require('path');
 var S3Client = require('./lib/aws-s3');
 var CodeDeployClient = require('./lib/aws-codedeploy');
@@ -33,7 +33,7 @@ module.exports = {
                 },
             },
             ensureConfigPropertySet: function(propertyName) {
-                if (!this.propertyByString(this.pluginConfig,propertyName)) {
+                if (!this.propertyByString(this.pluginConfig, propertyName)) {
                     var message = 'Missing required config: `' + propertyName + '`';
                     this.log(message, {
                         color: 'red'
@@ -41,18 +41,18 @@ module.exports = {
                     throw new Error(message);
                 }
             },
-            requiredConfig: ['accessKeyId', 'secretAccessKey', 'region', 'deploymentOptions.applicationName', 'deploymentOptions.deploymentGroupName', 'deploymentOptions.S3Bucket'],
+            requiredConfig: ['accessKeyId', 'secretAccessKey', 'region', 'awsDeploymentOptions.applicationName'],
             prepare: function(context) {
                 /** Initialize configuration for both S3 and CodeDeploy client **/
                 /** First, S3 Service options **/
-                this.awsS3ServiceOptions = this.readConfig('awsServiceOptions');
+                this.awsS3ServiceOptions = this.awsS3ServiceOptions || {};
                 if (!this.awsS3ServiceOptions['accessKeyId'])
                     this.awsS3ServiceOptions['accessKeyId'] = this.readConfig('accessKeyId');
                 if (!this.awsS3ServiceOptions['secretAccessKey'])
                     this.awsS3ServiceOptions['secretAccessKey'] = this.readConfig('secretAccessKey');
                 if (!this.awsS3ServiceOptions['region'])
                     this.awsS3ServiceOptions['region'] = this.readConfig('region');
-                this.awsCodeDeployServiceOptions = this.readConfig('awsServiceOptions');
+                this.awsCodeDeployServiceOptions = this.awsCodeDeployServiceOptions || {};
                 if (!this.awsCodeDeployServiceOptions['accessKeyId'])
                     this.awsCodeDeployServiceOptions['accessKeyId'] = this.readConfig('accessKeyId');
                 if (!this.awsCodeDeployServiceOptions['secretAccessKey'])
@@ -65,7 +65,6 @@ module.exports = {
                     distDir: this.readConfig('distDir'),
                     s3FolderKey: this.readConfig('key'),
                     revisionKey: this.readConfig('basePackageName') + '-' + this.readConfig('revisionKey'),
-                    bucket: this.readConfig('S3Bucket'),
                     manifestPath: this.readConfig('manifestPath'),
                     archiveType: this.readConfig('archiveType'),
                     archiveTempDirectory: this.readConfig('archiveTempDirectory'),
@@ -77,20 +76,54 @@ module.exports = {
                 });
             },
             upload: function(context) {
-                this.log('AWS Code deploy plugin invoked');
+
                 var distributionFiles = this.readConfig('distFiles');
                 var filePattern = this.readConfig('filePattern');
-                return this._awsS3Client.upload(distributionFiles.filter(minmatch.filter(filePattern, {
-                    matchBase: true
-                })), this.readConfig('s3UploadOptions')).then(function(fileUploaded) {
-                    this.log('AWS CodeDeploy: Finished uploading ' + this.readConfig('revisionKey') + '.' + this.readConfig('archiveType') + ' to S3 bucket ' + this.readConfig('S3Bucket'));
-                    return this._awsCodeDeployClient.createDeployment(
-                        this.readConfig('S3Bucket'),
-                        this.readConfig('archiveType'),
-                        fileUploaded.eTag.ETag,
-                        fileUploaded.key,
-                        '');
-                }.bind(this)).catch(this._errorMessage.bind(this));
+                var revisionType = this.readConfig('revisionType');
+                var awsDeploymentOptions = this.readConfig('awsDeploymentOptions');
+
+
+
+                if (revisionType === 'S3') {
+                    this._awsS3Client.upload(distributionFiles.filter(minmatch.filter(filePattern, {
+                        matchBase: true
+                    })), this.readConfig('s3UploadOptions')).then(function(fileUploaded) {
+
+
+
+                        //Set the right parameters for S3 deployment
+                        if (revisionType === 'S3') {
+                            awsDeploymentOptions.revision = awsDeploymentOptions.revision || {};
+                            awsDeploymentOptions.revision.revisionType = 'S3';
+                            awsDeploymentOptions.revision.gitHubLocation = undefined;
+
+                            awsDeploymentOptions.revision.s3Location = {
+                                bucket: this.readConfig('s3UploadOptions').Bucket,
+                                bundleType: this.readConfig('archiveType'),
+                                eTag: fileUploaded.eTag,
+                                key: fileUploaded.key,
+                                version: fileUploaded.versionId,
+                            };
+                        } else {
+                            awsDeploymentOptions.revision = awsDeploymentOptions.revision || {};
+
+                            awsDeploymentOptions.revision.s3Location = undefined;
+
+                        }
+                        return this._awsCodeDeployClient.createDeployment(awsDeploymentOptions);
+                    }.bind(this)).catch(this._errorMessage.bind(this));
+                } else if (revisionType === 'GitHub') {
+                    //User is responsible for supplying the right options.
+                    awsDeploymentOptions.revision = awsDeploymentOptions.revision || {};
+
+                    awsDeploymentOptions.revision.revisionType = 'GitHub';
+                    awsDeploymentOptions.revision.s3Location = undefined;
+                    return this._awsCodeDeployClient.createDeployment(awsDeploymentOptions);
+                }
+
+
+
+
                 // First verify deployment group name
                 // Then verify application name exists in the group
                 // Then create an archive file containing appspec.yml
@@ -99,8 +132,7 @@ module.exports = {
                 //
                 //
             },
-            didUpload: function(context) {
-            },
+            didUpload: function(context) {},
             propertyByString: function(object, property) {
                 var properties = property.replace(/\[(\w+)\]/g, '.$1'); // convert indexes to properties
                 properties = properties.replace(/^\./, ''); // strip a leading dot
